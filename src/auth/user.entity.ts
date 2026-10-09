@@ -23,6 +23,12 @@ export class User {
   @Column({ default: 'active' })
   status: string;
 
+  @Column({ default: 0, name: 'login_attempts' })
+  loginAttempts: number;
+
+  @Column({ nullable: true, name: 'blocked_until' })
+  blockedUntil: Date;
+
   @CreateDateColumn()
   createdAt: Date;
 
