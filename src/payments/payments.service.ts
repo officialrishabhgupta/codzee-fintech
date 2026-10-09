@@ -9,6 +9,15 @@ import { CreatePaymentDto, PaymentResponseDto, UpdatePaymentStatusDto, PaymentSt
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
 
+  // Payment status transitions that are allowed
+  private readonly validTransitions: Record<PaymentStatus, PaymentStatus[]> = {
+    [PaymentStatus.PENDING]: [PaymentStatus.PROCESSING],
+    [PaymentStatus.PROCESSING]: [PaymentStatus.SUCCESS, PaymentStatus.FAILED],
+    [PaymentStatus.SUCCESS]: [PaymentStatus.REFUNDED],
+    [PaymentStatus.FAILED]: [PaymentStatus.PENDING],
+    [PaymentStatus.REFUNDED]: [],
+  };
+
   constructor(
     @InjectRepository(Payment)
     private paymentRepository: Repository<Payment>,
@@ -59,8 +68,11 @@ export class PaymentsService {
       throw new NotFoundException('Payment not found');
     }
 
-    if (payment.status !== PaymentStatus.PENDING) {
-      throw new BadRequestException('Payment cannot be processed');
+    // Validate state transition
+    if (!this.isValidTransition(payment.status as PaymentStatus, PaymentStatus.PROCESSING)) {
+      throw new BadRequestException(
+        `Cannot transition from ${payment.status} to PROCESSING. Valid states: ${this.validTransitions[payment.status as PaymentStatus].join(', ')}`
+      );
     }
 
     payment.status = PaymentStatus.PROCESSING;
@@ -87,6 +99,13 @@ export class PaymentsService {
       throw new NotFoundException('Payment not found');
     }
 
+    // Validate state transition
+    if (!this.isValidTransition(payment.status as PaymentStatus, dto.status)) {
+      throw new BadRequestException(
+        `Cannot transition from ${payment.status} to ${dto.status}. Valid transitions: ${this.validTransitions[payment.status as PaymentStatus].join(', ')}`
+      );
+    }
+
     payment.status = dto.status;
     if (dto.gatewayTransactionId) {
       payment.gatewayTransactionId = dto.gatewayTransactionId;
@@ -96,6 +115,16 @@ export class PaymentsService {
     this.logger.log(`Payment status updated: ${id} -> ${dto.status}`);
 
     return this.toResponseDto(payment);
+  }
+
+  /**
+   * Validate if a state transition is allowed
+   * @param currentStatus Current payment status
+   * @param targetStatus Target payment status
+   * @returns true if transition is valid, false otherwise
+   */
+  private isValidTransition(currentStatus: PaymentStatus, targetStatus: PaymentStatus): boolean {
+    return this.validTransitions[currentStatus]?.includes(targetStatus) ?? false;
   }
 
   private toResponseDto(payment: Payment): PaymentResponseDto {
