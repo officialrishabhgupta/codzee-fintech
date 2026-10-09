@@ -49,10 +49,30 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    // Check if account is locked
+    if (user.blockedUntil && user.blockedUntil > new Date()) {
+      throw new UnauthorizedException('Account temporarily locked. Please try again later.');
+    }
+
     const valid = await bcrypt.compare(dto.password, user.password);
     if (!valid) {
+      // Increment login attempts on failed password
+      user.loginAttempts = (user.loginAttempts || 0) + 1;
+
+      // Lock account after 5 failed attempts
+      if (user.loginAttempts >= 5) {
+        user.blockedUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+        await this.userRepository.save(user);
+        throw new UnauthorizedException('Too many failed login attempts. Account locked for 15 minutes.');
+      }
+
+      await this.userRepository.save(user);
       throw new UnauthorizedException('Invalid credentials');
     }
+
+    // Reset login attempts on successful login
+    user.loginAttempts = 0;
+    user.blockedUntil = null;
 
     const token = this.jwtService.sign({ sub: user.id, email: user.email });
 
