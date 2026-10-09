@@ -81,6 +81,8 @@ export class SettlementsService {
     initiated: number;
     completed: number;
     totalAmount: number;
+    averageAmount: number;
+    completionRate: number;
   }> {
     const [pending, initiated, completed] = await Promise.all([
       this.settlementRepository.count({ where: { status: SettlementStatus.PENDING } }),
@@ -94,11 +96,19 @@ export class SettlementsService {
       .where('settlement.status = :status', { status: SettlementStatus.COMPLETED })
       .getRawOne();
 
+    const allSettlements = await this.settlementRepository.find();
+    const totalSettlements = allSettlements.length;
+    const totalAmount = Number(totalResult?.sum) || 0;
+    const averageAmount = totalSettlements > 0 ? totalAmount / completed : 0;
+    const completionRate = totalSettlements > 0 ? (completed / totalSettlements) * 100 : 0;
+
     return {
       pending,
       initiated,
       completed,
-      totalAmount: Number(totalResult?.sum) || 0,
+      totalAmount,
+      averageAmount: Math.round(averageAmount * 100) / 100,
+      completionRate: Math.round(completionRate * 100) / 100,
     };
   }
 
